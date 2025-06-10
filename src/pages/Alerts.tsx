@@ -46,28 +46,47 @@ const Alerts = () => {
       .catch(() => setApiKey(''));
   }, []);
 
-  // Fetch recent alerts from backend
-  const [todayAlerts, setTodayAlerts] = useState([]);
-  const [yesterdayAlerts, setYesterdayAlerts] = useState([]);
-
-  useEffect(() => {
-    fetch('/api/alerts/recent')
-      .then(res => res.json())
-      .then(data => {
-        // Expecting data = { today: [...], yesterday: [...] }
-        setTodayAlerts(data.today || []);
-        setYesterdayAlerts(data.yesterday || []);
-      })
-      .catch(() => {
-        setTodayAlerts([]);
-        setYesterdayAlerts([]);
-        toast({
-          title: "Error",
-          description: "Failed to fetch alerts from backend.",
-          variant: "destructive"
-        });
-      });
-  }, []);
+  // Dummy alerts for demonstration
+  const [todayAlerts, setTodayAlerts] = useState([
+    {
+      id: 1,
+      type: 'weather',
+      severity: 'high',
+      status: 'active',
+      title: 'Heavy Rainfall Warning',
+      description: 'Heavy rainfall expected in your area today. Take necessary precautions for your crops.',
+      time: '09:00 AM'
+    },
+    {
+      id: 2,
+      type: 'disease',
+      severity: 'medium',
+      status: 'monitoring',
+      title: 'Possible Fungal Infection',
+      description: 'Weather conditions are favorable for fungal diseases. Monitor your crops closely.',
+      time: '07:30 AM'
+    }
+  ]);
+  const [yesterdayAlerts, setYesterdayAlerts] = useState([
+    {
+      id: 3,
+      type: 'irrigation',
+      severity: 'low',
+      status: 'resolved',
+      title: 'Irrigation Needed',
+      description: 'Soil moisture was low yesterday. Irrigation was recommended.',
+      time: '03:00 PM'
+    },
+    {
+      id: 4,
+      type: 'pest',
+      severity: 'medium',
+      status: 'resolved',
+      title: 'Pest Activity Detected',
+      description: 'Increased pest activity was detected in your region.',
+      time: '11:00 AM'
+    }
+  ]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -98,15 +117,6 @@ const Alerts = () => {
   const handleSendMessage = async () => {
     if (!message.trim()) return;
 
-    if (!apiKey) {
-      toast({
-        title: "API Key Error",
-        description: "AI assistant is not available. Please try again later.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     const userMessage = {
       id: messages.length + 1,
       type: 'user',
@@ -119,32 +129,21 @@ const Alerts = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+      // Call your backend Gemini chat API
+      const response = await fetch('https://ecoclime-api1.onrender.com/api/chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `You are an expert agricultural AI assistant. Please provide helpful, accurate advice about farming, crop management, pest control, irrigation, disease identification, and other agricultural topics. User question: ${message}`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 1024,
-          }
-        })
+        body: JSON.stringify({ message })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response from Gemini API');
+        throw new Error('Failed to get response from AI assistant');
       }
 
       const data = await response.json();
-      const botResponse = data.candidates[0]?.content?.parts[0]?.text || 'Sorry, I couldn\'t generate a response.';
+      const botResponse = data.response || 'Sorry, I couldn\'t generate a response.';
 
       const botMessage = {
         id: messages.length + 2,
@@ -155,7 +154,7 @@ const Alerts = () => {
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
+      console.error('Error calling backend Gemini API:', error);
       toast({
         title: "Error",
         description: "Failed to get response from AI assistant. Please try again later.",
@@ -244,92 +243,53 @@ const Alerts = () => {
           </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tabs */}
         <div className="flex space-x-1 mb-8">
           <Button
-            variant={activeTab === 'alerts' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('alerts')}
+            variant={activeTab === 'alerts' ? "default" : "outline"}
             className="flex items-center space-x-2"
+            onClick={() => setActiveTab('alerts')}
           >
             <AlertTriangle className="w-4 h-4" />
             <span>Alerts</span>
           </Button>
           <Button
-            variant={activeTab === 'chatbot' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('chatbot')}
+            variant={activeTab === 'assistant' ? "default" : "outline"}
             className="flex items-center space-x-2"
+            onClick={() => setActiveTab('assistant')}
           >
             <MessageCircle className="w-4 h-4" />
             <span>AI Assistant</span>
           </Button>
         </div>
 
+        {/* Render Alerts Section */}
         {activeTab === 'alerts' && (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* Today's Alerts */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-gray-100">Today</h2>
-                <Badge variant="outline" className="text-xs">
-                  {todayAlerts.length} alerts
-                </Badge>
-              </div>
-              
-              <div className="space-y-4">
-                {todayAlerts.map((alert, index) => (
-                  <AlertCard key={alert.id} alert={alert} index={index} />
-                ))}
-              </div>
-            </div>
+            <h2 className="text-xl font-semibold text-gray-100 mb-2">Today's Alerts</h2>
+            {todayAlerts.length === 0 ? (
+              <div className="text-gray-400">No alerts for today.</div>
+            ) : (
+              todayAlerts.map((alert, idx) => (
+                <AlertCard alert={alert} index={idx} key={alert.id || idx} />
+              ))
+            )}
 
             {/* Yesterday's Alerts */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-gray-100">Yesterday</h2>
-                <Badge variant="outline" className="text-xs">
-                  {yesterdayAlerts.length} alerts
-                </Badge>
-              </div>
-              
-              <div className="space-y-4">
-                {yesterdayAlerts.map((alert, index) => (
-                  <AlertCard key={alert.id} alert={alert} index={index + todayAlerts.length} />
-                ))}
-              </div>
-            </div>
-
-            {/* Alert Settings */}
-            <Card className="fade-in bg-gray-900 border-gray-800 text-gray-100" style={{ animationDelay: '0.6s' }}>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
-                  <span>Alert Preferences</span>
-                </CardTitle>
-                <CardDescription>
-                  Customize when and how you receive notifications
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button variant="outline" className="justify-start">
-                    Weather Alerts
-                  </Button>
-                  <Button variant="outline" className="justify-start">
-                    Disease Detection
-                  </Button>
-                  <Button variant="outline" className="justify-start">
-                    Irrigation Reminders
-                  </Button>
-                  <Button variant="outline" className="justify-start">
-                    Pest Warnings
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <h2 className="text-xl font-semibold text-gray-100 mt-8 mb-2">Yesterday's Alerts</h2>
+            {yesterdayAlerts.length === 0 ? (
+              <div className="text-gray-400">No alerts for yesterday.</div>
+            ) : (
+              yesterdayAlerts.map((alert, idx) => (
+                <AlertCard alert={alert} index={idx} key={alert.id || idx} />
+              ))
+            )}
           </div>
         )}
 
-        {activeTab === 'chatbot' && (
+        {/* Render AI Assistant Section */}
+        {activeTab === 'assistant' && (
           <div className="space-y-6">
             {/* Chat Interface */}
             <Card className="fade-in bg-gray-900 border-gray-800 text-gray-100" style={{ animationDelay: '0.1s' }}>
@@ -413,3 +373,35 @@ const Alerts = () => {
 };
 
 export default Alerts;
+
+// --- The following command/API usage examples are commented out as requested ---
+
+/*
+// POST /api/alerts/weather
+fetch('https://ecoclime-api.onrender.com/api/alerts/weather', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer <token>'
+  },
+  body: JSON.stringify({ location })
+})
+.then(res => res.json())
+.then(data => {
+  // data: array of alerts
+});
+
+// POST /api/chat
+fetch('https://ecoclime-api.onrender.com/api/chat', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer <token>'
+  },
+  body: JSON.stringify({ message: "Your question here" })
+})
+.then(res => res.json())
+.then(data => {
+  // data.botMessage.content is the Gemini AI reply
+});
+*/

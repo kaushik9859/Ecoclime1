@@ -18,15 +18,30 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    // POST /api/auth/login
+    fetch('https://ecoclime-api.onrender.com/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    })
+    .then(res => res.json())
+    .then(data => {
       setIsLoading(false);
+      // Save data.token for future requests
       toast({
         title: "Welcome back!",
         description: "Successfully logged in to AgriTech",
       });
-      navigate('/dashboard');
-    }, 2000);
+      navigate('/dashboard'); // <-- This line routes to dashboard
+    })
+    .catch(err => {
+      setIsLoading(false);
+      toast({
+        title: "Login failed",
+        description: "Invalid email or password",
+        variant: "destructive",
+      });
+    });
   };
 
   return (

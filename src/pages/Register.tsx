@@ -45,6 +45,8 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [location, setLocation] = useState('');
   const [locating, setLocating] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -97,6 +99,56 @@ const Register = () => {
     }
   };
 
+  // Handler for form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Prevent empty fields
+    if (!email || !password || !location) {
+      toast({
+        title: "Registration failed",
+        description: "Please fill in all fields (email, password, location).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    fetch('https://ecoclime-api.onrender.com/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, location })
+    })
+      .then(async res => {
+        const data = await res.json();
+        setIsLoading(false);
+        if (!res.ok) {
+          toast({
+            title: "Registration failed",
+            description: data.message || "Unknown error",
+            variant: "destructive",
+          });
+          navigate('/dashboard'); // Navigate even if registration failed
+          return;
+        }
+        toast({
+          title: "Registration successful!",
+          description: "Welcome to EcoClime!",
+        });
+        navigate('/dashboard');
+      })
+      .catch(err => {
+        setIsLoading(false);
+        toast({
+          title: "Registration failed",
+          description: err.message,
+          variant: "destructive",
+        });
+        navigate('/dashboard'); // Navigate even if fetch fails
+      });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-900 via-slate-900 to-emerald-950 p-4 relative">
       <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
@@ -108,13 +160,13 @@ const Register = () => {
           <div className="mx-auto w-16 h-16 bg-primary rounded-full flex items-center justify-center pulse-green">
             <Leaf className="w-8 h-8 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-100">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-100">Create Account</CardTitle>
           <CardDescription className="text-gray-400">
-            Sign in to your AgriTech account to continue managing your farm
+            Register for AgriTech to start managing your farm
           </CardDescription>
         </CardHeader>
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-gray-100">Email</Label>
@@ -123,6 +175,8 @@ const Register = () => {
                 type="email"
                 placeholder="farmer@agritech.com"
                 required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 className="bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-400 focus:border-primary"
               />
             </div>
@@ -135,6 +189,8 @@ const Register = () => {
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
                   className="bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-400 focus:border-primary pr-10"
                 />
                 <Button
@@ -201,20 +257,20 @@ const Register = () => {
               {isLoading ? (
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
-                  <span>Signing in...</span>
+                  <span>Signing up...</span>
                 </div>
               ) : (
-                'Sign In'
+                'Sign Up'
               )}
             </Button>
             
             <p className="text-center text-sm text-gray-400">
-              Don't have an account?{' '}
+              Already have an account?{' '}
               <Link
-                to="/dashboard"
+                to="/login"
                 className="text-primary hover:underline font-medium"
               >
-                Sign up for free
+                Sign in
               </Link>
             </p>
           </CardFooter>

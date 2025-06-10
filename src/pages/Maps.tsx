@@ -345,6 +345,16 @@ const Maps = () => {
                           <p className="text-xs text-gray-400 mt-1">
                             {selectedLocation.vegetationHealth.recommendation}
                           </p>
+                          <a
+                            href="https://vegetationhealthpredictor.streamlit.app/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-3"
+                          >
+                            <Button className="bg-green-700 hover:bg-green-800 text-white rounded-lg shadow text-xs px-4 py-1">
+                              Know More
+                            </Button>
+                          </a>
                         </div>
                       </div>
                     </div>

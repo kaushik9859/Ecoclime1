@@ -35,6 +35,19 @@ const CropDisease = () => {
         prevention: 'Ensure proper spacing between plants, avoid overhead watering, and monitor humidity levels.'
       });
     }, 3000);
+
+    const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+    const formData = new FormData();
+    formData.append('image', fileInput.files[0]);
+    fetch('https://ecoclime-api.onrender.com/api/cropdisease', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer <token>' },
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      setAnalysisResult(data);
+    });
   };
 
   return (

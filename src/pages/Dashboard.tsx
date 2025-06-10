@@ -7,7 +7,6 @@ import { MapPin, Cloud, Droplets, Thermometer, Wind, Leaf, AlertCircle, Search }
 import Navbar from '@/components/Navbar';
 
 const API_KEY = '89405827033362524c66fdfdf402b015';
-const GEMINI_API_KEY = "AIzaSyDDmGMmH6XTv28KFx-8tOEW0YJ-5T2ju-4"; // Do not disclose
 
 const vegetationImages: Record<string, string> = {
   Excellent: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80",
@@ -178,42 +177,30 @@ const Dashboard = () => {
     }
   };
 
-  // Fetch crop suggestions from Gemini API
-  const fetchCropSuggestions = async (weather: any) => {
-    if (!weather) return;
+  // Fetch crop suggestions from your backend API
+  const fetchCropsFromBackend = async (location: string) => {
     setCropSuggestions(null);
     setCropError(null);
     setCropLoading(true);
-
     try {
-      const prompt = `
-Given the following climate and soil conditions, suggest the top three crops that would grow best. 
-For each crop, provide the crop name and a one-line description. Format as a numbered list.
-
-Temperature: ${weather.temperature}°C
-Humidity: ${weather.humidity}%
-Rainfall: ${weather.rainfall} mm
-Description: ${weather.description}
-Soil: Assume typical soil for this region.
-
-Top 3 crops:
-      `.trim();
-
-      // Use the correct API base link as requested
-      const response = await fetch("https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=" + GEMINI_API_KEY, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
+      const response = await fetch('https://ecoclime-api1.onrender.com/api/crops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location })
       });
-
       const data = await response.json();
-      let crops: CropDetail[] = [];
-      if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        crops = fetchCropDetails(data.candidates[0].content.parts[0].text);
+      console.log('Crop API response:', data); // <-- Add this line
+      if (Array.isArray(data.crops)) {
+        setCropSuggestions(
+          data.crops.map((name: string) => ({
+            name,
+            description: '',
+            image: cropImageMap[name.toLowerCase()] || cropImageMap[name.split(' ')[0].toLowerCase()] || cropImageMap['wheat'],
+          }))
+        );
+      } else {
+        setCropSuggestions([]);
       }
-      setCropSuggestions(crops.length ? crops : null);
     } catch (err) {
       setCropError("Could not fetch crop suggestions.");
     } finally {
@@ -221,10 +208,43 @@ Top 3 crops:
     }
   };
 
-  // When weather changes, fetch crop suggestions
+  // Call fetchCropsFromBackend when weather changes (i.e., when location changes)
   useEffect(() => {
-    if (weather) fetchCropSuggestions(weather);
+    if (weather && weather.name) {
+      fetchCropsFromBackend(weather.name);
+    }
     // eslint-disable-next-line
+  }, [weather]);
+
+  // POST /api/vegetation (updated to new backend and response structure)
+  const postVegetationData = async (location: string) => {
+    try {
+      const response = await fetch('https://ecoclime-api1.onrender.com/api/vegetation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ location })
+      });
+
+      const data = await response.json();
+      if (data) {
+        setVegHealth({
+          score: data.score,
+          status: data.status,
+          recommendation: data.recommendations // backend returns 'recommendations'
+        });
+      }
+    } catch (err) {
+      console.error('Error posting vegetation data:', err);
+    }
+  };
+
+  // Call postVegetationData when location is fetched
+  useEffect(() => {
+    if (weather) {
+      postVegetationData(weather.name);
+    }
   }, [weather]);
 
   return (
@@ -316,7 +336,7 @@ Top 3 crops:
                 className="w-28 h-28 mb-2 rounded-full border-4 border-green-700 shadow-lg object-cover"
                 onError={e => (e.currentTarget.src = vegetationImages['Good'])}
               />
-              <div className={`font-bold text-lg ${vegHealth.status === 'Poor' ? 'text-red-400' : vegHealth.status === 'Excellent' ? 'text-green-300' : 'text-yellow-300'}`}>
+              <div className={`font-extrabold text-2xl tracking-wide uppercase ${vegHealth.status === 'Poor' ? 'text-red-400' : vegHealth.status === 'Excellent' ? 'text-green-300' : 'text-yellow-300'}`}>
                 {vegHealth.status}
               </div>
               {/* Vegetation Health Score Line */}
@@ -339,12 +359,37 @@ Top 3 crops:
                   />
                 </div>
               </div>
-              <div className="text-gray-400 mt-2">{vegHealth.recommendation}</div>
+              <h1>Recommendation from AI:</h1>
+              {/* Show recommendations from API */}
+              <div className="text-gray-400 mt-2 text-center w-full">
+                {Array.isArray(vegHealth.recommendation)
+                  ? (
+                    <ul className="list-disc list-inside space-y-1">
+                      {vegHealth.recommendation.map((rec: string, idx: number) => (
+                        <li key={idx}>{rec}</li>
+                      ))}
+                    </ul>
+                  )
+                  : vegHealth.recommendation
+                }
+              </div>
+              {/* Know More Button */}
+              <a
+                href="https://vegetationhealthpredictor.streamlit.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4"
+              >
+                <Button className="bg-green-700 hover:bg-green-800 text-white rounded-lg shadow">
+                  Know More
+                </Button>
+              </a>
             </CardContent>
           </Card>
         )}
 
         {/* Crop Selection Section (moved above Alerts) */}
+        {/*
         {weather && (
           <Card className="mb-6 shadow-lg border-blue-700 bg-gradient-to-r from-gray-800 via-gray-900 to-blue-900/80 rounded-2xl">
             <CardHeader>
@@ -364,24 +409,19 @@ Top 3 crops:
                 <div className="text-red-400">{cropError}</div>
               )}
               {cropSuggestions && cropSuggestions.length > 0 && (
-                <ol className="list-decimal list-inside space-y-4 text-lg text-blue-200 font-semibold">
+                <ul className="list-disc list-inside space-y-2 text-lg text-blue-200 font-semibold">
                   {cropSuggestions.map((crop, idx) => (
-                    <li key={idx} className="flex items-start gap-4">
+                    <li key={idx} className="flex items-center gap-3">
                       <img
                         src={crop.image}
                         alt={crop.name}
-                        className="w-16 h-16 rounded-lg object-cover border border-blue-700 shadow"
+                        className="w-10 h-10 rounded-lg object-cover border border-blue-700 shadow"
                         onError={e => (e.currentTarget.src = cropImageMap['wheat'])}
                       />
-                      <div>
-                        <div className="font-bold text-blue-100">{crop.name}</div>
-                        {crop.description && (
-                          <div className="text-sm text-blue-300">{crop.description}</div>
-                        )}
-                      </div>
+                      <span className="font-bold text-blue-100">{crop.name}</span>
                     </li>
                   ))}
-                </ol>
+                </ul>
               )}
               {!cropLoading && !cropError && (!cropSuggestions || cropSuggestions.length === 0) && (
                 <div className="text-gray-400">No suggestions available.</div>
@@ -389,6 +429,7 @@ Top 3 crops:
             </CardContent>
           </Card>
         )}
+        */}
 
         {/* Alerts Section (now below crop selection) */}
         {alert && (
