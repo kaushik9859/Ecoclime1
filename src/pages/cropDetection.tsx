@@ -4,10 +4,10 @@ import { Card, CardContent } from '@/components/ui/card';
 
 // Updated with real crop images from Google (Unsplash)
 const cropImageMap: Record<string, string> = {
-  rice: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=60',
-  wheat: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=60',
-  corn: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=60',
-  soybeans: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=60',
+  rice: 'https://media.istockphoto.com/id/622925154/photo/ripe-rice-in-the-field-of-farmland.jpg?s=612x612&w=0&k=20&c=grtA7L3dm_SP80Fdt-PpIwu5GYacZygErTDUDNIKHwY=',
+  wheat: 'https://www.shutterstock.com/image-photo/close-wheat-ears-field-summer-260nw-1906577527.jpg',
+  corn: 'https://media.istockphoto.com/id/1061097354/photo/the-corn-plant-in-the-field.jpg?s=612x612&w=0&k=20&c=NEEzE5il-up8g7NZj_7HJUpyVep18zBRfhnMZ5laLiQ=',
+  soybeans: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ5eYzcNOG5HfzVYIHxbAFVvLIYgvRlbFFcnrwH0eW-WtF3A57nSLmb4Rk&s',
 };
 
 type Crop = {

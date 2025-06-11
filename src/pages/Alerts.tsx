@@ -1,10 +1,9 @@
-// import React, { useState, useRef, useEffect } from 'react';
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ArrowLeft, 
   Cloud, 
@@ -16,7 +15,8 @@ import {
   Send,
   Bot,
   User,
-  MessageCircle
+  MessageCircle,
+  RefreshCw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
@@ -25,203 +25,257 @@ import { toast } from '@/hooks/use-toast';
 const Alerts = () => {
   const [activeTab, setActiveTab] = useState('alerts');
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState([
+  const [chatHistory, setChatHistory] = useState([
     {
       id: 1,
-      type: 'bot',
-      content: 'Hello! I\'m your AI farming assistant. I can help you with crop management, disease identification, irrigation planning, and answer any agricultural questions you might have. How can I assist you today?',
-      timestamp: new Date().toLocaleTimeString()
+      type: 'answer',
+      content: "Hello! I'm your AI farming assistant. I can help you with crop management, disease identification, irrigation planning, and answer any agricultural questions you might have. How can I assist you today?",
+      timestamp: new Date()
     }
   ]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [generatingAnswer, setGeneratingAnswer] = useState(false);
   const messagesEndRef = useRef(null);
-
-  // Fetch the Gemini API key from backend on mount
   const [apiKey, setApiKey] = useState('');
-  useEffect(() => {
-    // Replace with your backend endpoint
-    fetch('/api/get-gemini-key')
-      .then(res => res.json())
-      .then(data => setApiKey(data.apiKey || ''))
-      .catch(() => setApiKey(''));
-  }, []);
+  const [nextMessageId, setNextMessageId] = useState(2);
 
-  // Dummy alerts for demonstration
-  const [todayAlerts, setTodayAlerts] = useState([
+  // Mock alerts data - replace with actual data source
+  const mockAlerts = [
     {
       id: 1,
       type: 'weather',
       severity: 'high',
-      status: 'active',
-      title: 'Heavy Rainfall Warning',
-      description: 'Heavy rainfall expected in your area today. Take necessary precautions for your crops.',
-      time: '09:00 AM'
+      title: 'Heavy Rain Warning',
+      description: 'Expected heavy rainfall in the next 24 hours. Protect sensitive crops.',
+      timestamp: '2 hours ago',
+      icon: Cloud
     },
     {
       id: 2,
-      type: 'disease',
+      type: 'pest',
       severity: 'medium',
-      status: 'monitoring',
-      title: 'Possible Fungal Infection',
-      description: 'Weather conditions are favorable for fungal diseases. Monitor your crops closely.',
-      time: '07:30 AM'
-    }
-  ]);
-  const [yesterdayAlerts, setYesterdayAlerts] = useState([
+      title: 'Aphid Detection',
+      description: 'Increased aphid activity detected in sector 3. Consider organic treatment.',
+      timestamp: '5 hours ago',
+      icon: Bug
+    },
     {
       id: 3,
       type: 'irrigation',
       severity: 'low',
-      status: 'resolved',
-      title: 'Irrigation Needed',
-      description: 'Soil moisture was low yesterday. Irrigation was recommended.',
-      time: '03:00 PM'
-    },
-    {
-      id: 4,
-      type: 'pest',
-      severity: 'medium',
-      status: 'resolved',
-      title: 'Pest Activity Detected',
-      description: 'Increased pest activity was detected in your region.',
-      time: '11:00 AM'
+      title: 'Irrigation Schedule',
+      description: 'Next irrigation cycle scheduled for tomorrow morning.',
+      timestamp: '1 day ago',
+      icon: Droplets
     }
-  ]);
+  ];
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'high': return 'bg-red-500';
-      case 'medium': return 'bg-yellow-500';
-      case 'low': return 'bg-blue-500';
-      default: return 'bg-gray-500';
+  // Auto-scroll to bottom when new messages are added
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
+  // Fetch API key from environment variables or backend
+  useEffect(() => {
+    const envKey = import.meta.env.VITE_API_GENERATIVE_LANGUAGE_CLIENT;
+    if (envKey) {
+      setApiKey(envKey);
+      return;
     }
-  };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active': return <Badge variant="destructive">Active</Badge>;
-      case 'resolved': return <Badge variant="secondary">Resolved</Badge>;
-      case 'monitoring': return <Badge variant="outline">Monitoring</Badge>;
-      default: return <Badge variant="secondary">Unknown</Badge>;
-    }
-  };
-
-  const iconMap: Record<string, React.ElementType> = {
-    weather: Cloud,
-    irrigation: Droplets,
-    disease: Bug,
-    pest: Bug,
-    // Add more mappings as needed
-  };
-
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-
-    const userMessage = {
-      id: messages.length + 1,
-      type: 'user',
-      content: message,
-      timestamp: new Date().toLocaleTimeString()
+    const fetchApiKey = async () => {
+      try {
+        const res = await fetch('/api/get-gemini-key');
+        if (!res.ok) throw new Error('Failed to fetch API key');
+        const data = await res.json();
+        setApiKey(data.apiKey || '');
+      } catch (error) {
+        console.error('API key fetch error:', error);
+        toast({
+          title: "Warning",
+          description: "Could not load API key. Some features may not work.",
+          variant: "destructive"
+        });
+      }
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setMessage('');
-    setIsLoading(true);
+    fetchApiKey();
+  }, []);
 
+  const generateAnswer = useCallback(async (e) => {
+    e?.preventDefault();
+    if (!message.trim() || generatingAnswer) return;
+    
+    setGeneratingAnswer(true);
+    const currentQuestion = message.trim();
+    setMessage("");
+    
+    // Add user question to chat
+    const userMessage = {
+      id: nextMessageId,
+      type: 'question',
+      content: currentQuestion,
+      timestamp: new Date()
+    };
+    
+    setChatHistory(prev => [...prev, userMessage]);
+    setNextMessageId(prev => prev + 1);
+    
     try {
-      // Call your backend Gemini chat API
-      const response = await fetch('https://ecoclime-api1.onrender.com/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ message })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response from AI assistant');
+      if (!apiKey) {
+        throw new Error("API key not configured. Please check your settings.");
       }
 
-      const data = await response.json();
-      const botResponse = data.response || 'Sorry, I couldn\'t generate a response.';
+      let response;
+      
+      // Try direct API first
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `You are an expert farming assistant. Provide detailed, accurate answers to farming-related questions. Keep responses concise but informative. Current question: ${currentQuestion}`
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 1024,
+              }
+            }),
+          }
+        );
 
-      const botMessage = {
-        id: messages.length + 2,
-        type: 'bot',
-        content: botResponse,
-        timestamp: new Date().toLocaleTimeString()
-      };
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
 
-      setMessages(prev => [...prev, botMessage]);
+        const data = await response.json();
+        
+        if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          throw new Error("Unexpected API response format");
+        }
+
+        const aiResponse = data.candidates[0].content.parts[0].text;
+        
+        const botMessage = {
+          id: nextMessageId + 1,
+          type: 'answer',
+          content: aiResponse,
+          timestamp: new Date()
+        };
+        
+        setChatHistory(prev => [...prev, botMessage]);
+        setNextMessageId(prev => prev + 2);
+        return;
+        
+      } catch (directApiError) {
+        console.log("Direct API failed, trying backend:", directApiError);
+        
+        // Fallback to backend API
+        response = await fetch('https://ecoclime-api1.onrender.com/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: currentQuestion }),
+          // Add timeout for better UX
+          signal: AbortSignal.timeout(30000) // 30 second timeout
+        });
+
+        if (!response.ok) {
+          throw new Error(`Backend API failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const botResponse = data.response || 'Sorry, I couldn\'t generate a response.';
+        
+        const botMessage = {
+          id: nextMessageId + 1,
+          type: 'answer',
+          content: botResponse,
+          timestamp: new Date()
+        };
+        
+        setChatHistory(prev => [...prev, botMessage]);
+        setNextMessageId(prev => prev + 2);
+      }
     } catch (error) {
-      console.error('Error calling backend Gemini API:', error);
+      console.error("Chat error:", error);
+      
+      let errorMessage = "I apologize, but I'm having trouble accessing farming information right now. ";
+      
+      if (error.name === 'AbortError') {
+        errorMessage += "The request timed out. Please try again.";
+      } else if (error.message.includes('API key')) {
+        errorMessage += "The service is not properly configured.";
+      } else {
+        errorMessage += "Please try again later.";
+      }
+      
+      const errorBotMessage = {
+        id: nextMessageId + 1,
+        type: 'answer',
+        content: errorMessage,
+        timestamp: new Date()
+      };
+      
+      setChatHistory(prev => [...prev, errorBotMessage]);
+      setNextMessageId(prev => prev + 2);
+      
       toast({
         title: "Error",
-        description: "Failed to get response from AI assistant. Please try again later.",
+        description: error.message || "Failed to get response from AI assistant",
         variant: "destructive"
       });
-
-      const errorMessage = {
-        id: messages.length + 2,
-        type: 'bot',
-        content: 'Sorry, I encountered an error. Please try again later.',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setGeneratingAnswer(false);
     }
-  };
+  }, [message, generatingAnswer, apiKey, nextMessageId]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e) => {
+    // Allow Shift+Enter for new lines
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+      e.preventDefault(); // Prevent default new line behavior
+      
+      // Only submit if there's a message and not currently generating
+      if (message.trim() && !generatingAnswer) {
+        generateAnswer(e);
+      }
+    }
+  }, [message, generatingAnswer, generateAnswer]);
+
+  const clearChat = useCallback(() => {
+    setChatHistory([
+      {
+        id: 1,
+        type: 'answer',
+        content: "Hello! I'm your AI farming assistant. I can help you with crop management, disease identification, irrigation planning, and answer any agricultural questions you might have. How can I assist you today?",
+        timestamp: new Date()
+      }
+    ]);
+    setNextMessageId(2);
+    setMessage('');
+  }, []);
+
+  const getSeverityColor = (severity) => {
+    switch (severity) {
+      case 'high': return 'bg-red-600';
+      case 'medium': return 'bg-yellow-600';
+      case 'low': return 'bg-green-600';
+      default: return 'bg-gray-600';
     }
   };
 
-  const AlertCard = ({ alert, index }: { alert: any, index: number }) => {
-    const Icon = iconMap[alert.type] || AlertTriangle;
-    return (
-      <Card 
-        key={alert.id} 
-        className="agri-card-hover fade-in" 
-        style={{ animationDelay: `${index * 0.1}s` }}
-      >
-        <CardContent className="p-6">
-          <div className="flex items-start space-x-4">
-            <div className={`w-12 h-12 ${getSeverityColor(alert.severity)} rounded-lg flex items-center justify-center flex-shrink-0`}>
-              <Icon className="w-6 h-6 text-white" />
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold text-foreground truncate">
-                  {alert.title}
-                </h3>
-                {getStatusBadge(alert.status)}
-              </div>
-              
-              <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
-                {alert.description}
-              </p>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                  <Clock className="w-3 h-3" />
-                  <span>{alert.time}</span>
-                </div>
-                
-                <Button variant="ghost" size="sm" className="text-primary hover:text-primary/80">
-                  View Details
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
+  const formatTimestamp = (timestamp) => {
+    if (typeof timestamp === 'string') return timestamp;
+    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -229,115 +283,122 @@ const Alerts = () => {
       <Navbar />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="flex items-center space-x-4 mb-8">
           <Link to="/dashboard">
-            <Button variant="ghost" size="sm" className="text-gray-400 hover:text-gray-100">
+            <Button variant="ghost" size="sm" className="text-gray-300 hover:text-white">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
+              Back to Dashboard
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-gray-100">Farm Assistant</h1>
-            <p className="text-gray-400">Stay informed with alerts and get AI-powered farming guidance</p>
+            <h1 className="text-3xl font-bold text-white">Farm Alerts & Assistant</h1>
+            <p className="text-gray-400 mt-1">Monitor your farm and get AI-powered assistance</p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-1 mb-8">
-          <Button
-            variant={activeTab === 'alerts' ? "default" : "outline"}
-            className="flex items-center space-x-2"
-            onClick={() => setActiveTab('alerts')}
-          >
-            <AlertTriangle className="w-4 h-4" />
-            <span>Alerts</span>
-          </Button>
-          <Button
-            variant={activeTab === 'assistant' ? "default" : "outline"}
-            className="flex items-center space-x-2"
-            onClick={() => setActiveTab('assistant')}
-          >
-            <MessageCircle className="w-4 h-4" />
-            <span>AI Assistant</span>
-          </Button>
-        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-gray-800 border-gray-700">
+            <TabsTrigger value="alerts" className="data-[state=active]:bg-primary">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              Alerts
+            </TabsTrigger>
+            <TabsTrigger value="assistant" className="data-[state=active]:bg-primary">
+              <MessageCircle className="w-4 h-4 mr-2" />
+              AI Assistant
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Render Alerts Section */}
-        {activeTab === 'alerts' && (
-          <div className="space-y-6">
-            {/* Today's Alerts */}
-            <h2 className="text-xl font-semibold text-gray-100 mb-2">Today's Alerts</h2>
-            {todayAlerts.length === 0 ? (
-              <div className="text-gray-400">No alerts for today.</div>
-            ) : (
-              todayAlerts.map((alert, idx) => (
-                <AlertCard alert={alert} index={idx} key={alert.id || idx} />
-              ))
-            )}
+          <TabsContent value="alerts" className="space-y-6 mt-6">
+            <div className="grid gap-4">
+              {mockAlerts.map((alert) => {
+                const IconComponent = alert.icon;
+                return (
+                  <Card key={alert.id} className="bg-gray-900 border-gray-800 text-gray-100 hover:bg-gray-800/50 transition-colors">
+                    <CardContent className="flex items-center space-x-4 p-4">
+                      <div className={`p-2 rounded-lg ${getSeverityColor(alert.severity)}`}>
+                        <IconComponent className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold text-white">{alert.title}</h3>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant={alert.severity === 'high' ? 'destructive' : alert.severity === 'medium' ? 'default' : 'secondary'}>
+                              {alert.severity}
+                            </Badge>
+                            <span className="text-sm text-gray-400 flex items-center">
+                              <Clock className="w-3 h-3 mr-1" />
+                              {alert.timestamp}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-gray-300 text-sm mt-1">{alert.description}</p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabsContent>
 
-            {/* Yesterday's Alerts */}
-            <h2 className="text-xl font-semibold text-gray-100 mt-8 mb-2">Yesterday's Alerts</h2>
-            {yesterdayAlerts.length === 0 ? (
-              <div className="text-gray-400">No alerts for yesterday.</div>
-            ) : (
-              yesterdayAlerts.map((alert, idx) => (
-                <AlertCard alert={alert} index={idx} key={alert.id || idx} />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Render AI Assistant Section */}
-        {activeTab === 'assistant' && (
-          <div className="space-y-6">
-            {/* Chat Interface */}
-            <Card className="fade-in bg-gray-900 border-gray-800 text-gray-100" style={{ animationDelay: '0.1s' }}>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Bot className="w-5 h-5 text-primary" />
-                  <span>AI Farming Assistant</span>
-                </CardTitle>
-                <CardDescription>
-                  Ask questions about crop management, pest control, irrigation, and more
-                </CardDescription>
+          <TabsContent value="assistant" className="space-y-6 mt-6">
+            <Card className="bg-gray-900 border-gray-800 text-gray-100">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Bot className="w-5 h-5 text-primary" />
+                    <span>AI Farming Assistant</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Ask questions about crop management, pest control, irrigation, and more
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={clearChat}
+                  className="border-gray-700 hover:bg-gray-800"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Clear Chat
+                </Button>
               </CardHeader>
               <CardContent>
-                {/* Messages */}
-                <div className="h-96 overflow-y-auto border border-gray-800 rounded-lg p-4 mb-4 space-y-4 bg-gray-800/50">
-                  {messages.map((msg) => (
+                <div className="h-96 overflow-y-auto border border-gray-800 rounded-lg p-4 mb-4 space-y-4 bg-gray-800/50 scroll-smooth">
+                  {chatHistory.map((chat) => (
                     <div
-                      key={msg.id}
-                      className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                      key={chat.id}
+                      className={`flex ${chat.type === 'question' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
                         className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2 rounded-lg ${
-                          msg.type === 'user'
+                          chat.type === 'question'
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-gray-800 text-gray-100'
+                            : 'bg-gray-800 text-gray-100 border border-gray-700'
                         }`}
                       >
                         <div className="flex items-start space-x-2">
-                          {msg.type === 'bot' && <Bot className="w-4 h-4 mt-1 flex-shrink-0" />}
-                          {msg.type === 'user' && <User className="w-4 h-4 mt-1 flex-shrink-0" />}
-                          <div>
-                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                            <p className="text-xs opacity-70 mt-1">{msg.timestamp}</p>
+                          {chat.type === 'answer' && <Bot className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />}
+                          {chat.type === 'question' && <User className="w-4 h-4 mt-1 flex-shrink-0" />}
+                          <div className="flex-1">
+                            <p className="text-sm whitespace-pre-wrap break-words">{chat.content}</p>
+                            <p className="text-xs opacity-70 mt-1">{formatTimestamp(chat.timestamp)}</p>
                           </div>
                         </div>
                       </div>
                     </div>
                   ))}
-                  {isLoading && (
+                  {generatingAnswer && (
                     <div className="flex justify-start">
-                      <div className="bg-gray-800 text-gray-100 max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2 rounded-lg">
+                      <div className="bg-gray-800 text-gray-100 max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2 rounded-lg border border-gray-700">
                         <div className="flex items-center space-x-2">
-                          <Bot className="w-4 h-4" />
+                          <Bot className="w-4 h-4 text-primary" />
                           <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                           </div>
+                          <span className="text-xs text-gray-400">Thinking...</span>
                         </div>
                       </div>
                     </div>
@@ -345,63 +406,35 @@ const Alerts = () => {
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Message Input */}
-                <div className="flex space-x-2">
+                <form onSubmit={generateAnswer} className="flex space-x-2">
                   <Textarea
                     placeholder="Ask me about farming, crop diseases, irrigation, pest control..."
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="flex-1 min-h-[60px] resize-none bg-gray-800 border-gray-700 text-gray-100"
-                    disabled={isLoading}
+                    onKeyDown={handleKeyPress}
+                    className="flex-1 min-h-[60px] max-h-32 resize-none bg-gray-800 border-gray-700 text-gray-100 focus:border-primary"
+                    disabled={generatingAnswer}
                   />
                   <Button
-                    onClick={handleSendMessage}
-                    disabled={isLoading || !message.trim()}
+                    type="submit"
+                    disabled={generatingAnswer || !message.trim()}
                     size="lg"
+                    className="self-end"
                   >
-                    <Send className="w-4 h-4" />
+                    {generatingAnswer ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </Button>
-                </div>
+                </form>
               </CardContent>
             </Card>
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
 };
 
 export default Alerts;
-
-// --- The following command/API usage examples are commented out as requested ---
-
-/*
-// POST /api/alerts/weather
-fetch('https://ecoclime-api.onrender.com/api/alerts/weather', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer <token>'
-  },
-  body: JSON.stringify({ location })
-})
-.then(res => res.json())
-.then(data => {
-  // data: array of alerts
-});
-
-// POST /api/chat
-fetch('https://ecoclime-api.onrender.com/api/chat', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer <token>'
-  },
-  body: JSON.stringify({ message: "Your question here" })
-})
-.then(res => res.json())
-.then(data => {
-  // data.botMessage.content is the Gemini AI reply
-});
-*/
